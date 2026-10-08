@@ -1,0 +1,23 @@
+{
+  "latitude": -30.12345,
+  "longitude": 22.54321,
+  "method": "MuslimWorldLeague",
+  "madhab": "Shafi",
+  "tolerances": {
+    "fajr": 45,
+    "dhuhr": 90,
+    "asr": 75,
+    "maghrib": 25,
+    "isha": 35
+  },
+  "labels": {
+    "fajr": "الْفَجْرُ",
+    "dhuhr": "الْظُهْرُ",
+    "asr": "الْعَصْرُ",
+    "maghrib": "الْمَغْرِبُ",
+    "isha": "الْعِشَاءُ"
+  },
+  "bar_width": 10,
+  "nerd_font": true,
+  "expired_minutes": 10
+}

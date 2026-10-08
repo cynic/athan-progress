@@ -1,0 +1,9 @@
+{
+  "custom/athan": {
+    "exec": "~/.local/bin/athan-progress",
+    "return-type": "json",
+    "format": "{}",
+    "interval": 60,
+    "tooltip": true
+  }
+}
