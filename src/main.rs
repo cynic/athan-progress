@@ -6,14 +6,15 @@
 //! Exit code is non-zero on any error (Waybar then shows the module as failed;
 //! a wrapper can substitute a fallback glyph).
 
+mod cli;
 mod config;
 
-use std::path::PathBuf;
-
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc};
+use clap::Parser;
 use salah::{Configuration, Coordinates, Prayer, PrayerSchedule};
 use serde::Serialize;
 
+use cli::Cli;
 use config::Settings;
 
 /// Invisible bidi control characters (UAX #9). Waybar/Pango renders text with
@@ -220,25 +221,10 @@ struct WaybarOutput {
 }
 
 fn run() -> Result<(), String> {
-    let mut explicit: Option<PathBuf> = None;
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "-c" | "--config" => {
-                let path = args
-                    .next()
-                    .ok_or_else(|| "missing path after --config".to_string())?;
-                explicit = Some(PathBuf::from(path));
-            }
-            "-h" | "--help" => {
-                print_help();
-                return Ok(());
-            }
-            other => return Err(format!("unknown argument '{other}' (try --help)")),
-        }
-    }
+    let cli = Cli::parse();
+    let overrides = cli.to_file_config()?;
 
-    let settings = config::load(explicit)?;
+    let settings = config::load(cli.config, overrides)?;
 
     // Select the schedule by *local* date: near midnight (and in far-east
     // timezones) the UTC date can differ from the date the user is living.
@@ -340,26 +326,6 @@ fn tooltip_title(e: &Entry) -> String {
         ltr_segment(&e.name),
         ltr_segment(&format!("({})", e.name_en)),
     ])
-}
-
-fn print_help() {
-    println!(
-        "athan-progress — Waybar progress bar for the window following each athan\n\
-         \n\
-         Usage: athan-progress [--config <path>]\n\
-         \n\
-         Options:\n\
-         -c, --config <path>  Use this JSON config file\n\
-         -h, --help           Print this help\n\
-         \n\
-         Config search order:\n\
-         1. --config <path>\n\
-         2. $ATHAN_PROGRESS_CONFIG\n\
-         3. $XDG_CONFIG_HOME/athan-progress/config.json\n\
-         4. ~/.config/athan-progress/config.json\n\
-         \n\
-         Output: one line of Waybar JSON (text, tooltip, class) on stdout."
-    );
 }
 
 fn main() {

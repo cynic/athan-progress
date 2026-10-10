@@ -87,41 +87,71 @@ impl Default for Settings {
 }
 
 /// Raw file representation: every key optional, missing keys keep defaults.
+/// Also used as the command-line overlay shape (see [`crate::cli`]).
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct FileConfig {
-    latitude: Option<f64>,
-    longitude: Option<f64>,
-    method: Option<String>,
-    madhab: Option<String>,
-    tolerances: FileTolerances,
-    labels: FileLabels,
-    bar_width: Option<u8>,
-    nerd_font: Option<bool>,
-    expired_minutes: Option<i64>,
+pub(crate) struct FileConfig {
+    pub(crate) latitude: Option<f64>,
+    pub(crate) longitude: Option<f64>,
+    pub(crate) method: Option<String>,
+    pub(crate) madhab: Option<String>,
+    pub(crate) tolerances: FileTolerances,
+    pub(crate) labels: FileLabels,
+    pub(crate) bar_width: Option<u8>,
+    pub(crate) nerd_font: Option<bool>,
+    pub(crate) expired_minutes: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct FileTolerances {
+    pub(crate) fajr: Option<i64>,
+    pub(crate) dhuhr: Option<i64>,
+    pub(crate) asr: Option<i64>,
+    pub(crate) maghrib: Option<i64>,
+    pub(crate) isha: Option<i64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct FileTolerances {
-    fajr: Option<i64>,
-    dhuhr: Option<i64>,
-    asr: Option<i64>,
-    maghrib: Option<i64>,
-    isha: Option<i64>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct FileLabels {
-    fajr: Option<String>,
-    dhuhr: Option<String>,
-    asr: Option<String>,
-    maghrib: Option<String>,
-    isha: Option<String>,
+pub(crate) struct FileLabels {
+    pub(crate) fajr: Option<String>,
+    pub(crate) dhuhr: Option<String>,
+    pub(crate) asr: Option<String>,
+    pub(crate) maghrib: Option<String>,
+    pub(crate) isha: Option<String>,
 }
 
 impl FileConfig {
+    /// Field-wise overlay: every `Some(..)` in `over` (e.g. from command-line
+    /// flags) wins over `self` (from the config file); `None` keeps `self`.
+    pub(crate) fn merged_with(mut self, over: FileConfig) -> Self {
+        if over.latitude.is_some() {
+            self.latitude = over.latitude;
+        }
+        if over.longitude.is_some() {
+            self.longitude = over.longitude;
+        }
+        if over.method.is_some() {
+            self.method = over.method;
+        }
+        if over.madhab.is_some() {
+            self.madhab = over.madhab;
+        }
+        if over.bar_width.is_some() {
+            self.bar_width = over.bar_width;
+        }
+        if over.nerd_font.is_some() {
+            self.nerd_font = over.nerd_font;
+        }
+        if over.expired_minutes.is_some() {
+            self.expired_minutes = over.expired_minutes;
+        }
+        self.tolerances = self.tolerances.merged_with(over.tolerances);
+        self.labels = self.labels.merged_with(over.labels);
+        self
+    }
+
     fn resolve(self) -> Result<Settings, String> {
         let mut s = Settings::default();
 
@@ -188,6 +218,76 @@ impl FileConfig {
     }
 }
 
+impl FileTolerances {
+    /// Set one prayer's tolerance by name (accepts `zuhr` as an alias for
+    /// `dhuhr`); used for `--tolerance PRAYER=MINUTES` entries.
+    pub(crate) fn set(&mut self, prayer: &str, minutes: i64) -> Result<(), String> {
+        match normalize(prayer).as_str() {
+            "fajr" => self.fajr = Some(minutes),
+            "dhuhr" | "zuhr" => self.dhuhr = Some(minutes),
+            "asr" => self.asr = Some(minutes),
+            "maghrib" => self.maghrib = Some(minutes),
+            "isha" | "esha" => self.isha = Some(minutes),
+            _ => {
+                return Err(format!(
+                    "unknown prayer '{prayer}' (expected fajr, zuhr, asr, maghrib or isha)"
+                ))
+            }
+        }
+        Ok(())
+    }
+
+    fn merged_with(mut self, over: Self) -> Self {
+        for (mine, theirs) in [
+            (&mut self.fajr, over.fajr),
+            (&mut self.dhuhr, over.dhuhr),
+            (&mut self.asr, over.asr),
+            (&mut self.maghrib, over.maghrib),
+            (&mut self.isha, over.isha),
+        ] {
+            if theirs.is_some() {
+                *mine = theirs;
+            }
+        }
+        self
+    }
+}
+
+impl FileLabels {
+    /// Set one prayer's label by name (same prayer-name rules as
+    /// [`FileTolerances::set`]); used for `--label PRAYER=TEXT` entries.
+    pub(crate) fn set(&mut self, prayer: &str, label: String) -> Result<(), String> {
+        match normalize(prayer).as_str() {
+            "fajr" => self.fajr = Some(label),
+            "dhuhr" | "zuhr" => self.dhuhr = Some(label),
+            "asr" => self.asr = Some(label),
+            "maghrib" => self.maghrib = Some(label),
+            "isha" | "esha" => self.isha = Some(label),
+            _ => {
+                return Err(format!(
+                    "unknown prayer '{prayer}' (expected fajr, zuhr, asr, maghrib or isha)"
+                ))
+            }
+        }
+        Ok(())
+    }
+
+    fn merged_with(mut self, over: Self) -> Self {
+        for (mine, theirs) in [
+            (&mut self.fajr, over.fajr),
+            (&mut self.dhuhr, over.dhuhr),
+            (&mut self.asr, over.asr),
+            (&mut self.maghrib, over.maghrib),
+            (&mut self.isha, over.isha),
+        ] {
+            if theirs.is_some() {
+                *mine = theirs;
+            }
+        }
+        self
+    }
+}
+
 fn check_tolerance(name: &str, value: Option<i64>, default: i64) -> Result<i64, String> {
     match value {
         None => Ok(default),
@@ -196,28 +296,31 @@ fn check_tolerance(name: &str, value: Option<i64>, default: i64) -> Result<i64, 
     }
 }
 
-/// Load settings, honouring the search order documented at the top of this module.
-pub fn load(explicit: Option<PathBuf>) -> Result<Settings, String> {
-    if let Some(path) = explicit {
-        return load_file(&path);
-    }
-    if let Some(path) = std::env::var_os("ATHAN_PROGRESS_CONFIG").map(PathBuf::from) {
-        return load_file(&path);
-    }
-    if let Some(path) = default_config_path() {
+/// Load settings, honouring the search order documented at the top of this
+/// module. `overrides` (built from command-line flags by [`crate::cli`]) win
+/// over values from the file, which win over the built-in defaults.
+pub fn load(explicit: Option<PathBuf>, overrides: FileConfig) -> Result<Settings, String> {
+    let base = if let Some(path) = explicit {
+        load_file(&path)?
+    } else if let Some(path) = std::env::var_os("ATHAN_PROGRESS_CONFIG").map(PathBuf::from) {
+        load_file(&path)?
+    } else if let Some(path) = default_config_path() {
         if path.is_file() {
-            return load_file(&path);
+            load_file(&path)?
+        } else {
+            FileConfig::default()
         }
-    }
-    Ok(Settings::default())
+    } else {
+        FileConfig::default()
+    };
+    base.merged_with(overrides).resolve()
 }
 
-fn load_file(path: &Path) -> Result<Settings, String> {
+fn load_file(path: &Path) -> Result<FileConfig, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-    let file: FileConfig = serde_json::from_str(&text)
-        .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
-    file.resolve()
+    serde_json::from_str(&text)
+        .map_err(|e| format!("failed to parse {}: {e}", path.display()))
 }
 
 fn default_config_path() -> Option<PathBuf> {
@@ -364,5 +467,38 @@ mod tests {
         assert!(bad(r#"{ "expired_minutes": 0 }"#));
         assert!(bad(r#"{ "expired_minutes": -3 }"#));
         assert!(bad(r#"{ "nerd_font": "yes" }"#));
+    }
+
+    #[test]
+    fn cli_overlay_beats_file_beats_defaults() {
+        let file: FileConfig = serde_json::from_str(
+            r#"{ "latitude": 1.5, "tolerances": { "fajr": 33 }, "labels": { "isha": "Night" }, "bar_width": 8 }"#,
+        )
+        .expect("valid json");
+        let mut over = FileConfig::default();
+        over.latitude = Some(2.5);
+        over.tolerances.fajr = Some(44);
+        let s = file.merged_with(over).resolve().expect("valid config");
+        assert_eq!(s.latitude, 2.5); // CLI flag wins over file
+        assert_eq!(s.tolerances.fajr, 44); // CLI flag wins over file
+        assert_eq!(s.bar_width, 8); // file value survives (no flag)
+        assert_eq!(s.labels.isha, "Night"); // file value survives (no flag)
+        assert_eq!(s.tolerances.dhuhr, 90); // built-in default survives
+        assert_eq!(s.longitude, DEFAULT_LONGITUDE); // built-in default survives
+    }
+
+    #[test]
+    fn tolerance_and_label_setters_accept_aliases() {
+        let mut t = FileTolerances::default();
+        t.set("zuhr", 120).expect("alias");
+        t.set("Esha", 40).expect("case-insensitive");
+        assert_eq!(t.dhuhr, Some(120));
+        assert_eq!(t.isha, Some(40));
+        assert!(t.set("sunrise", 5).is_err());
+
+        let mut l = FileLabels::default();
+        l.set("dhuhr", "Noon".to_string()).expect("sets");
+        assert_eq!(l.dhuhr.as_deref(), Some("Noon"));
+        assert!(l.set("tahajjud", "x".to_string()).is_err());
     }
 }

@@ -149,6 +149,36 @@ Unknown keys are rejected with an error rather than silently ignored, so
 typos surface immediately. Method and madhab matching is case-insensitive and
 ignores spaces/dashes/underscores (`"Muslim World League"` works).
 
+## Command-line options
+
+Every configuration option can also be given as a flag; **precedence is
+flags > config file > built-in defaults**. Run `athan-progress --help` for
+the full list.
+
+```sh
+# One-off location and method, ignoring the config file's values:
+athan-progress --latitude 21.4225 --longitude 39.8262 --method umm-al-qura
+
+# Temporary tolerance/label experiments (repeatable; zuhr and dhuhr are
+# accepted for the same prayer):
+athan-progress --tolerance fajr=20 --tolerance isha=60 --label fajr=الفجر
+
+# Bar appearance and EXPIRED duration:
+athan-progress --bar-width 12 --nerd-font --expired-minutes 15
+```
+
+Notes:
+
+- `--tolerance PRAYER=MINUTES` and `--label PRAYER=TEXT` accept `fajr`,
+  `zuhr`/`dhuhr`, `asr`, `maghrib`, `isha`/`esha` (case-insensitive).
+- `--nerd-font` / `--no-nerd-font` force the bar style either way; if
+  neither is given, the config file's `nerd_font` applies.
+- Unknown flags exit with code 2 and a usage hint (courtesy of clap);
+  invalid values (bad prayer names, non-numeric minutes, out-of-range
+  coordinates) exit with code 1 and a specific message.
+- The binary is built with `lto = true` and `codegen-units = 1` (see
+  `[profile.release]`) to keep the added dependency cost small.
+
 ## Development
 
 The repo ships a [devenv](https://devenv.sh) environment (`devenv shell`)
